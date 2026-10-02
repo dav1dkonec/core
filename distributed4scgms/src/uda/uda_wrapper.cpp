@@ -72,7 +72,7 @@ pagmo::population uda_wrapper::evolve(pagmo::population pop) const
     // Solve
     solver::TSolver_Progress progress{ 0 };
     const HRESULT hr = solver::Solve_Generic(m_solver_id, setup, progress);
-    if (FAILED(hr))
+    if (!Succeeded(hr))
         throw std::runtime_error("solver::Solve_Generic failed");
 
     const pagmo::vector_double best_f = prob.fitness(solution);
