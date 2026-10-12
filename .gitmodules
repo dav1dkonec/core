@@ -3,4 +3,4 @@
 	url = https://github.com/jonas-s-s-s/pagmo2.git
 [submodule "distributed4scgms/src/external/Pagmo-solver-distributed"]
 	path = distributed4scgms/src/external/Pagmo-solver-distributed
-	url = https://github.com/jonas-s-s-s/Pagmo-solver-distributed.git
+	url = https://github.com/dav1dkonec/Pagmo-solver-distributed.git
