@@ -44,6 +44,8 @@
 #include <vector>
 #include <numeric>
 #include <limits>
+#include <chrono>
+#include <iostream>
 
 #include <pagmo/types.hpp>
 #include <pagmo/problem.hpp>
@@ -52,6 +54,7 @@
 #include "distributed_solver.h"
 #include "TUdpParams.h"
 #include "udp_dll_wrapper.h"
+#include "udp_registry.h"
 #include "pagmo/algorithms/de.hpp"
 #include "pagmo/algorithms/gaco.hpp"
 #include "scgms/iface/DistributedSolverIface.h"
@@ -60,6 +63,9 @@
 
 namespace scgms_distributed_solver
 {
+    // How long to wait for the expected workers before giving up.
+    constexpr std::chrono::seconds Worker_Connect_Timeout{60};
+
     //#############################################################################################
     //# CDistributed_Solver - SCGMS adapter
     //#############################################################################################
@@ -91,6 +97,9 @@ namespace scgms_distributed_solver
             const size_t expectedWorkerCount = mSolverData->expected_worker_count;
             const void* originalData = mSolverData->solverData;
 
+            if (!mSolverData->local_cache_dir.empty())
+                udp_registry::get().set_local_cache_dir(mSolverData->local_cache_dir);
+
             progress = solver::Null_Solver_Progress;
             bool succeeded = false;
 
@@ -118,6 +127,25 @@ namespace scgms_distributed_solver
 
             // Enable logging
             distSolver.enable_logging();
+
+            // Without this wait the islands are handed to whoever happens to be connected,
+            // which forces the even split and leaves the capability-based plan unused.
+            if (!distSolver.wait_until_workers_connect(Worker_Connect_Timeout))
+            {
+                const size_t connected = distSolver.get_current_worker_count();
+                if (connected == 0)
+                {
+                    const std::string msg = "No worker connected within "
+                        + std::to_string(Worker_Connect_Timeout.count())
+                        + " s, cannot run the distributed solver";
+                    spdlog::error("{}", msg);
+                    std::cerr << msg << std::endl;
+                    return false;
+                }
+
+                spdlog::warn("Only {} of {} workers connected, continuing with those",
+                             connected, expectedWorkerCount);
+            }
 
             std::vector<pagmo::vector_double> hints{};
             if (mSetup.hint_count > 0)
