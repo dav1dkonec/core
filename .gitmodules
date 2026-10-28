@@ -4,3 +4,4 @@
 [submodule "distributed4scgms/src/external/Pagmo-solver-distributed"]
 	path = distributed4scgms/src/external/Pagmo-solver-distributed
 	url = https://github.com/dav1dkonec/Pagmo-solver-distributed.git
+	branch = heterogeneous-env
