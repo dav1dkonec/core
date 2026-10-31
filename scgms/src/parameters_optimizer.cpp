@@ -494,6 +494,99 @@ class  CParameters_Optimizer {
 			return { ok ? S_OK : E_FAIL, {first_feedback_receiver_idx, last_metric_or_feedback_sender_idx+1, objective_count} };	//+1 is like the end iterator!
 		}
 
+		/* Describes the problem so that a solver can evaluate it in another process: the optimizing
+		 * body as ini content, the events it has to replay, and where each parameter goes. The event
+		 * buffers point into mEvents_To_Replay_Master_Copy, which outlives the solver call. */
+		bool Describe_Optimizing_Problem(std::string& body_ini,
+				std::vector<solver::TOptimizing_Event>& events,
+				std::vector<solver::TOptimizing_Parameter>& parameters) {
+
+			if (!mOptimizing_Body_Master_Copy) {
+				return false;
+			}
+
+			//1. render the body; only the persistent configuration can do that
+			scgms::SPersistent_Filter_Chain_Configuration persistent_body;
+			if (!persistent_body) {
+				return false;
+			}
+
+			{
+				refcnt::wstr_container* parent_path = nullptr;
+				if (mOptimizing_Body_Master_Copy->Get_Parent_Path(&parent_path) == S_OK) {
+					const auto converted_path = refcnt::WChar_Container_To_WString(parent_path);
+					persistent_body->Set_Parent_Path(converted_path.c_str());
+					parent_path->Release();
+				}
+			}
+
+			scgms::IFilter_Configuration_Link** link_begin, ** link_end;
+			if (mOptimizing_Body_Master_Copy->get(&link_begin, &link_end) != S_OK) {
+				return false;
+			}
+
+			if (persistent_body->add(link_begin, link_end) != S_OK) {
+				return false;
+			}
+
+			refcnt::str_container* content = nullptr;
+			if (persistent_body->Save_To_Memory(&content, nullptr) != S_OK) {
+				return false;
+			}
+
+			body_ini = refcnt::Char_Container_To_String(content);
+			content->Release();
+
+			//2. flatten the events
+			events.clear();
+			events.reserve(mEvents_To_Replay_Master_Copy.size());
+			for (auto& source : mEvents_To_Replay_Master_Copy) {
+				scgms::TDevice_Event& raw = source.Raw();
+
+				solver::TOptimizing_Event event{};
+				event.event_code = static_cast<uint32_t>(raw.event_code);
+				event.device_id = raw.device_id;
+				event.signal_id = raw.signal_id;
+				event.device_time = raw.device_time;
+				event.segment_id = raw.segment_id;
+
+				switch (scgms::UDevice_Event_internal::major_type(raw.event_code)) {
+					case scgms::UDevice_Event_internal::NDevice_Event_Major_Type::level:
+						event.level = raw.level;
+						break;
+
+					case scgms::UDevice_Event_internal::NDevice_Event_Major_Type::parameters:
+						if (raw.parameters) {
+							double* begin, * end;
+							if (raw.parameters->get(&begin, &end) == S_OK) {
+								event.parameters = begin;
+								event.parameter_count = static_cast<size_t>(std::distance(begin, end));
+							}
+						}
+						break;
+
+					default:
+						break;
+				}
+
+				events.push_back(event);
+			}
+
+			//3. say where each parameter goes; indices are relative to the body, as on the worker
+			parameters.clear();
+			parameters.reserve(mFilter_Indices.size());
+			for (size_t i = 0; i < mFilter_Indices.size(); i++) {
+				parameters.push_back({
+					mFilter_Indices[i] - mCharacteristics.optimizing_body_begin,
+					mParameters_Config_Names[i].c_str(),
+					mFilter_Parameter_Offsets[i],
+					mFilter_Parameter_Counts[i]
+				});
+			}
+
+			return true;
+		}
+
 		bool Fetch_Events_To_Replay(const size_t optimizing_body_begin, refcnt::Swstr_list &error_description) {
 			mEvents_To_Replay_Master_Copy.clear();
 		 
@@ -669,6 +762,18 @@ class  CParameters_Optimizer {
 				effective_hints.push_back(hints[i]);
 			}
 
+			//the storage has to outlive solve_generic, because the description only points into it
+			std::string optimizing_body_ini;
+			std::vector<solver::TOptimizing_Event> optimizing_events;
+			std::vector<solver::TOptimizing_Parameter> optimizing_parameters;
+			const bool problem_described = Describe_Optimizing_Problem(optimizing_body_ini, optimizing_events, optimizing_parameters);
+
+			const solver::TOptimizing_Problem optimizing_problem{
+				optimizing_body_ini.data(), optimizing_body_ini.size(),
+				optimizing_events.data(), optimizing_events.size(),
+				optimizing_parameters.data(), optimizing_parameters.size()
+			};
+
 			solver::TSolver_Setup solver_setup{
 				mProblem_Size, mCharacteristics.objective_count,
 				mLower_Bound.data(), mUpper_Bound.data(),
@@ -676,7 +781,8 @@ class  CParameters_Optimizer {
 				mFound_Parameters.data(),
 
 				this, internal::Parameters_Fitness_Wrapper, nullptr,
-				max_generations, population_size, std::numeric_limits<double>::min()
+				max_generations, population_size, std::numeric_limits<double>::min(),
+				problem_described ? &optimizing_problem : nullptr
 			};
 
 			//as the configuration may hold some native filters, let us keep an over-subscription reduced instance to keep the libraries loaded
