@@ -13,9 +13,14 @@ namespace scgms_distributed_solver
     constexpr const char* Env_Verify = "SCGMS_DISTRIBUTED_VERIFY";
 
     /**
-     * Evaluates the same candidates twice: through the problem the workers will receive, and
-     * through the objective function of this process. The two must agree, otherwise the worker
-     * rebuilds the filter chain differently than the optimizer runs it.
+     * Evaluates the same candidates twice, both here in this process: once through the problem
+     * object that will be shipped to the workers, and once through TSolver_Setup::objective,
+     * which is what the optimizer would use without distribution. No worker is involved, which
+     * is exactly why the two results can be compared at all.
+     *
+     * They must agree, otherwise the shipped problem rebuilds the filter chain differently than
+     * the optimizer runs it. It does not cover serialization or the network; it checks that the
+     * problem itself is faithful.
      *
      * Meant to be run once on a small task before trusting a long one; a mismatch on 288
      * parameters is almost impossible to locate afterwards.

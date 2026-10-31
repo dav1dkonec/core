@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <chrono>
 #include <limits>
 
 namespace scgms_distributed_solver
@@ -35,6 +36,7 @@ namespace scgms_distributed_solver
 
         double worstDifference = 0.0;
         size_t mismatches = 0;
+        std::chrono::steady_clock::duration shippedTime{}, inProcessTime{};
 
         for (size_t sample = 0; sample < sampleCount; sample++)
         {
@@ -48,44 +50,55 @@ namespace scgms_distributed_solver
                 candidate[i] = lower[i] + t * (upper[i] - lower[i]);
             }
 
-            pagmo::vector_double remote;
+            pagmo::vector_double shipped;
+            const auto shippedStart = std::chrono::steady_clock::now();
             try
             {
-                remote = problem.fitness(candidate);
+                shipped = problem.fitness(candidate);
             }
             catch (const std::exception& e)
             {
-                dist_logger()->error("Verification sample {}: the worker's problem threw: {}", sample, e.what());
+                dist_logger()->error("Verification sample {}: the chain problem threw: {}", sample, e.what());
                 return std::numeric_limits<double>::quiet_NaN();
             }
+
+            shippedTime += std::chrono::steady_clock::now() - shippedStart;
 
             const auto expanded = remap.Expand_Solution(candidate);
-            solver::TFitness local = solver::Nan_Fitness;
-            if (!setup.objective(setup.data, 1, expanded.data(), local.data()))
+            const auto inProcessStart = std::chrono::steady_clock::now();
+            solver::TFitness inProcess = solver::Nan_Fitness;
+            if (!setup.objective(setup.data, 1, expanded.data(), inProcess.data()))
             {
-                dist_logger()->error("Verification sample {}: the local objective failed", sample);
+                dist_logger()->error("Verification sample {}: the in-process objective failed", sample);
                 return std::numeric_limits<double>::quiet_NaN();
             }
+            inProcessTime += std::chrono::steady_clock::now() - inProcessStart;
 
-            for (size_t i = 0; i < objectives && i < remote.size(); i++)
+            for (size_t i = 0; i < objectives && i < shipped.size(); i++)
             {
-                if (Same_Fitness(remote[i], local[i]))
+                if (Same_Fitness(shipped[i], inProcess[i]))
                 {
                     continue;
                 }
 
-                const double difference = std::abs(remote[i] - local[i]);
+                const double difference = std::abs(shipped[i] - inProcess[i]);
                 worstDifference = std::max(worstDifference, difference);
                 mismatches++;
 
-                dist_logger()->error("Verification sample {}, objective {}: worker {} vs local {} (difference {})",
-                                     sample, i, remote[i], local[i], difference);
+                dist_logger()->error("Verification sample {}, objective {}: chain problem {} vs in-process objective {} (difference {})",
+                                     sample, i, shipped[i], inProcess[i], difference);
             }
         }
 
         if (mismatches == 0)
         {
-            dist_logger()->info("Verification passed: {} samples agree with the local objective", sampleCount);
+            const auto ms = [](const std::chrono::steady_clock::duration d)
+            {
+                return std::chrono::duration_cast<std::chrono::milliseconds>(d).count();
+            };
+
+            dist_logger()->info("Verification passed: {} samples agree; one fitness takes {} ms shipped, {} ms in-process",
+                                sampleCount, ms(shippedTime) / sampleCount, ms(inProcessTime) / sampleCount);
         }
         else
         {
