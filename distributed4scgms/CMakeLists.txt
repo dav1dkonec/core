@@ -24,5 +24,8 @@ CONFIGURE_FILTER_OUTPUT(${PROJ})
 # Call CMake file in the UDP directory
 add_subdirectory(./src/udp)
 
+# UDP that evaluates a SmartCGMS filter chain on the worker
+add_subdirectory(./src/udp_chain)
+
 # Add UDA
 add_subdirectory(./src/uda)
