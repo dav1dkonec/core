@@ -254,31 +254,7 @@ HRESULT IfaceCalling CPersistent_Chain_Configuration::Load_From_Memory(const cha
 	return (loaded_all_filters || encountered_E_NOT_SET) ? S_OK : S_FALSE;
 }
 
-HRESULT IfaceCalling CPersistent_Chain_Configuration::Save_To_File(const wchar_t* file_path, refcnt::wstr_list* error_description) noexcept {
-	refcnt::Swstr_list shared_error_description = refcnt::make_shared_reference_ext<refcnt::Swstr_list, refcnt::wstr_list>(error_description, true);
-
-	//1. determine the file path to save to
-	const bool empty_file_path = (file_path == nullptr) || (*file_path == 0);
-
-	if (empty_file_path && (mFile_Path.empty())) {
-		return E_ILLEGAL_METHOD_CALL;
-	}
-
-	filesystem::path working_file_path;
-	if (empty_file_path) {
-		working_file_path = mFile_Path;
-	}
-	else {
-		std::error_code ec;
-		working_file_path = filesystem::absolute(std::wstring{ file_path }, ec);
-		if (ec) {
-			refcnt::Swstr_list shared_error_description = refcnt::make_shared_reference_ext<refcnt::Swstr_list, refcnt::wstr_list>(error_description, true);
-			shared_error_description.push(Widen_String(ec.message()));
-			return E_INVALIDARG;
-		}
-	}
-
-	//2. produce the ini file content
+HRESULT CPersistent_Chain_Configuration::Build_Ini_Content(std::string& content, refcnt::Swstr_list shared_error_description) noexcept {
 	CSimpleIniW ini;
 	uint32_t section_counter = 1;
 	scgms::CSignal_Description signal_descriptors;	//make the GUID in the ini human-readable by attaching comments
@@ -385,8 +361,55 @@ HRESULT IfaceCalling CPersistent_Chain_Configuration::Save_To_File(const wchar_t
 	}
 
 
+	return ini.Save(content) == SI_Error::SI_OK ? S_OK : E_FAIL;
+}
+
+HRESULT IfaceCalling CPersistent_Chain_Configuration::Save_To_Memory(refcnt::str_container** memory, refcnt::wstr_list* error_description) noexcept {
+	if (!memory) {
+		return E_INVALIDARG;
+	}
+
+	refcnt::Swstr_list shared_error_description = refcnt::make_shared_reference_ext<refcnt::Swstr_list, refcnt::wstr_list>(error_description, true);
+
 	std::string content;
-	rc = ini.Save(content) == SI_Error::SI_OK ? S_OK : E_FAIL;
+	const HRESULT rc = Build_Ini_Content(content, shared_error_description);
+	if (rc != S_OK) {
+		return rc;
+	}
+
+	char* const begin = content.data();
+	*memory = refcnt::Create_Container<char>(begin, begin + content.size());
+
+	return *memory ? S_OK : E_OUTOFMEMORY;
+}
+
+HRESULT IfaceCalling CPersistent_Chain_Configuration::Save_To_File(const wchar_t* file_path, refcnt::wstr_list* error_description) noexcept {
+	refcnt::Swstr_list shared_error_description = refcnt::make_shared_reference_ext<refcnt::Swstr_list, refcnt::wstr_list>(error_description, true);
+
+	//1. determine the file path to save to
+	const bool empty_file_path = (file_path == nullptr) || (*file_path == 0);
+
+	if (empty_file_path && (mFile_Path.empty())) {
+		return E_ILLEGAL_METHOD_CALL;
+	}
+
+	filesystem::path working_file_path;
+	if (empty_file_path) {
+		working_file_path = mFile_Path;
+	}
+	else {
+		std::error_code ec;
+		working_file_path = filesystem::absolute(std::wstring{ file_path }, ec);
+		if (ec) {
+			refcnt::Swstr_list shared_error_description = refcnt::make_shared_reference_ext<refcnt::Swstr_list, refcnt::wstr_list>(error_description, true);
+			shared_error_description.push(Widen_String(ec.message()));
+			return E_INVALIDARG;
+		}
+	}
+
+	//2. produce the ini file content
+	std::string content;
+	const HRESULT rc = Build_Ini_Content(content, shared_error_description);
 
 	//3. save the content
 	if (rc == S_OK) {

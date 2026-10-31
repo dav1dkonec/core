@@ -52,6 +52,9 @@ class CPersistent_Chain_Configuration : public virtual scgms::IPersistent_Filter
 		void Advertise_Parent_Path() noexcept;
 
 	protected:
+		/* renders the whole configuration as the ini file content, shared by both Save_* methods */
+		HRESULT Build_Ini_Content(std::string& content, refcnt::Swstr_list shared_error_description) noexcept;
+
 		wchar_t* Describe_GUID(const GUID& val, const scgms::NParameter_Type param_type, const scgms::CSignal_Description& signal_descriptors) const noexcept;	
 
 	public:
@@ -67,6 +70,7 @@ class CPersistent_Chain_Configuration : public virtual scgms::IPersistent_Filter
 		virtual HRESULT IfaceCalling Load_From_File(const wchar_t *file_path, refcnt::wstr_list *error_description) noexcept override final;
 		virtual HRESULT IfaceCalling Load_From_Memory(const char *memory, const size_t len, refcnt::wstr_list *error_description) noexcept override final;
 		virtual HRESULT IfaceCalling Save_To_File(const wchar_t *file_path, refcnt::wstr_list* error_description) noexcept override final;
+		virtual HRESULT IfaceCalling Save_To_Memory(refcnt::str_container** memory, refcnt::wstr_list* error_description) noexcept override final;
 };
 
 #pragma warning( pop )
