@@ -494,9 +494,9 @@ class  CParameters_Optimizer {
 			return { ok ? S_OK : E_FAIL, {first_feedback_receiver_idx, last_metric_or_feedback_sender_idx+1, objective_count} };	//+1 is like the end iterator!
 		}
 
-		/* Describes the problem so that a solver can evaluate it in another process: the optimizing
-		 * body as ini content, the events it has to replay, and where each parameter goes. The event
-		 * buffers point into mEvents_To_Replay_Master_Copy, which outlives the solver call. */
+		/* Fills a TOptimizing_Problem from the already-prepared optimizing body, replay events and
+		 * parameter offsets. Parameter buffers of the events are not copied; they point into
+		 * mEvents_To_Replay_Master_Copy, which outlives the solver call. */
 		bool Describe_Optimizing_Problem(std::string& body_ini,
 				std::vector<solver::TOptimizing_Event>& events,
 				std::vector<solver::TOptimizing_Parameter>& parameters) {
@@ -572,7 +572,7 @@ class  CParameters_Optimizer {
 				events.push_back(event);
 			}
 
-			//3. say where each parameter goes; indices are relative to the body, as on the worker
+			//3. parameter locations; filter indices are relative to the optimizing body
 			parameters.clear();
 			parameters.reserve(mFilter_Indices.size());
 			for (size_t i = 0; i < mFilter_Indices.size(); i++) {
@@ -762,7 +762,7 @@ class  CParameters_Optimizer {
 				effective_hints.push_back(hints[i]);
 			}
 
-			//the storage has to outlive solve_generic, because the description only points into it
+			//must outlive solve_generic; TOptimizing_Problem only points into these
 			std::string optimizing_body_ini;
 			std::vector<solver::TOptimizing_Event> optimizing_events;
 			std::vector<solver::TOptimizing_Parameter> optimizing_parameters;

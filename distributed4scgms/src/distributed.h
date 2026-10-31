@@ -67,9 +67,8 @@ namespace scgms_distributed_solver
     // How long to wait for the expected workers before giving up.
     constexpr std::chrono::seconds Worker_Connect_Timeout{60};
 
-    // Where the cluster lives is a property of the deployment, not of the experiment, so it
-    // comes from the environment. The .ini stays portable and TSolver_Setup.data stays the
-    // optimizer's, which is what the SmartCGMS contract says it is.
+    // Deployment settings. Read through Read_Env; Solve() supplies a fallback for each, so
+    // none of them is required.
     constexpr const char* Env_Controller_Address = "SCGMS_DISTRIBUTED_CONTROLLER";
     constexpr const char* Env_Worker_Count = "SCGMS_DISTRIBUTED_WORKERS";
     constexpr const char* Env_Udp_Library = "SCGMS_DISTRIBUTED_UDP_LIB";
@@ -181,8 +180,7 @@ namespace scgms_distributed_solver
             // Enable logging
             distSolver.enable_logging();
 
-            // Opt-in check that the workers will compute the same fitness as this process would.
-            // After enable_logging, otherwise the verdict would go to the null logger.
+            // Must stay after enable_logging(), the verdict goes to the library logger.
             if (solveChain && !Read_Env(Env_Verify).empty())
             {
                 Verify_Chain_Problem(mSetup, mRemap, prob, 5);

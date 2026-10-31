@@ -10,8 +10,8 @@
 #include <boost/serialization/array.hpp>
 #include <boost/serialization/vector.hpp>
 
-// A device event in a form that survives the trip to a worker.
-// Info events are never replayed, so only the level and the parameter vector are carried.
+// Serializable form of scgms::TDevice_Event. Info events are not replayed, so only the level
+// and the parameter vector are represented.
 struct TChain_Event
 {
     uint32_t event_code{};
@@ -26,13 +26,13 @@ struct TChain_Event
 
     static TChain_Event From_Event(const scgms::UDevice_Event& event);
 
-    // Builds a fresh event; the caller owns it and feeds it to the chain.
+    // Allocates a new event; ownership passes to the caller.
     scgms::UDevice_Event To_Event() const;
 
 private:
     friend class boost::serialization::access;
 
-    // GUID has no serializer of its own; Data4 is a raw array, hence make_array.
+    // GUID has no Boost serializer; Data4 is a C array and needs make_array.
     template <typename Archive>
     static void serialize_guid(Archive& ar, GUID& guid)
     {

@@ -9,23 +9,17 @@
 
 namespace scgms_distributed_solver
 {
-    // Set this to any non-empty value to run the check before the evolution starts.
+    // Any non-empty value runs the check before the evolution starts.
     constexpr const char* Env_Verify = "SCGMS_DISTRIBUTED_VERIFY";
 
     /**
-     * Evaluates the same candidates twice, both here in this process: once through the problem
-     * object that will be shipped to the workers, and once through TSolver_Setup::objective,
-     * which is what the optimizer would use without distribution. No worker is involved, which
-     * is exactly why the two results can be compared at all.
+     * Evaluates the same candidates through the UDP that is sent to the workers and through
+     * TSolver_Setup::objective. Both run in the calling process; no worker is involved.
      *
-     * They must agree, otherwise the shipped problem rebuilds the filter chain differently than
-     * the optimizer runs it. It does not cover serialization or the network; it checks that the
-     * problem itself is faithful.
+     * Covers the UDP's chain reconstruction only, not serialization or transport.
      *
-     * Meant to be run once on a small task before trusting a long one; a mismatch on 288
-     * parameters is almost impossible to locate afterwards.
-     *
-     * @return the largest absolute difference found, or NaN if either side could not evaluate
+     * @param sampleCount candidates taken at even steps between the remapped bounds
+     * @return the largest absolute difference, or NaN if either side failed to evaluate
      */
     double Verify_Chain_Problem(const solver::TSolver_Setup& setup, const CRemap& remap,
                                 const pagmo::problem& problem, size_t sampleCount);

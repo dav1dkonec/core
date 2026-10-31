@@ -16,7 +16,7 @@
 #include <pagmo/s11n.hpp>
 #include <boost/serialization/export.hpp>
 
-// One filter the worker has to patch before every evaluation.
+// Location of one optimized parameter; applied to the configuration before every evaluation.
 struct TChain_Patch_Target
 {
     // Index of the filter within the optimizing body, not within the whole chain.
@@ -42,10 +42,9 @@ private:
 //#############################################################################################
 //# TChain_Problem - Pagmo-style UDP that evaluates a SmartCGMS filter chain
 //#############################################################################################
-// Unlike TProblem, this one does not carry a closed-form benchmark. It carries the optimizing
-// part of the chain as ini text plus the events the preceding filters already produced, and the
-// worker rebuilds the chain locally. That is what makes a remote fitness possible at all: the
-// original TSolver_Setup.objective is a pointer into the controller's process.
+// Holds the optimizing part of the chain as ini content together with the events emitted by the
+// preceding filters, and rebuilds the chain in whichever process calls fitness(). Required
+// because TSolver_Setup::objective is only valid in the optimizer's process.
 class TChain_Problem : public udp_base
 {
     CRemap mRemap;
@@ -57,8 +56,8 @@ class TChain_Problem : public udp_base
     std::vector<TChain_Event> mEvents{};
     std::vector<TChain_Patch_Target> mPatch_Targets{};
 
-    // Chains are expensive to build, so finished ones go back into a pool.
-    // Not serialized: it belongs to whichever process is evaluating.
+    // Pool of built configurations, reused across evaluations. Not serialized; the entries
+    // belong to the evaluating process.
     mutable std::mutex mPool_Guard{};
     mutable std::stack<scgms::SPersistent_Filter_Chain_Configuration> mPool{};
 
@@ -80,8 +79,7 @@ public:
                   std::vector<TChain_Patch_Target> patchTargets);
     void Set_Params(const TUdpParamsSerializable& params);
 
-    // Copies the description the optimizer put into TSolver_Setup. Everything is copied,
-    // because the original lives only for the duration of the solver call.
+    // Deep-copies the description; the source is only valid for the duration of the solver call.
     void Set_From(const solver::TOptimizing_Problem& problem);
 
 private:

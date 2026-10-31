@@ -48,7 +48,7 @@ scgms::UDevice_Event TChain_Event::To_Event() const
 
     if (has_parameters)
     {
-        // Each replay needs its own vector, otherwise a filter could modify the shared one.
+        // Fresh vector per event; filters may modify the parameters in place.
         event.parameters = refcnt::Create_Container_shared<double, scgms::SModel_Parameter_Vector>(
             const_cast<double*>(parameters.data()),
             const_cast<double*>(parameters.data()) + parameters.size());
@@ -63,9 +63,9 @@ scgms::UDevice_Event TChain_Event::To_Event() const
 
 namespace
 {
-    // Sits at the end of the chain and lets us wait until the shutdown event arrives.
-    // Not reference counted on purpose: it lives on the stack, so the chain must not be able
-    // to delete it. This mirrors CTerminal_Filter, which the in-process optimizer uses.
+    // Terminal filter of the rebuilt chain, signalling arrival of Shut_Down. Not reference
+    // counted: instances live on the stack and must not be deleted by the chain. Modelled on
+    // CTerminal_Filter in core/scgms.
     class CTerminal_Sink : public virtual scgms::IFilter, public virtual refcnt::CNotReferenced
     {
         std::mutex mGuard{};
@@ -105,7 +105,7 @@ namespace
         }
     };
 
-    // Asks every signal-error filter in the chain to promise us its metric.
+    // Collects the metrics promised by the signal-error filters of the chain.
     class CMetric_Harvester
     {
         solver::TFitness mMetric = solver::Nan_Fitness;
@@ -131,7 +131,7 @@ namespace
             return S_OK;
         }
 
-        // Highest priority first, same order as the optimizer uses.
+        // Reversed to highest priority first, matching CError_Metric_Future.
         size_t Get_Metric(double* const fitness) const
         {
             for (size_t i = 0; i < mCount; i++)
@@ -164,7 +164,7 @@ TChain_Problem::TChain_Problem(const TChain_Problem& other) : udp_base(other),
                                                               mEvents(other.mEvents),
                                                               mPatch_Targets(other.mPatch_Targets)
 {
-    // The pool is deliberately not copied, it belongs to the copy's own process.
+    // The pool is not copied; its entries belong to the process that built them.
 }
 
 TChain_Problem& TChain_Problem::operator=(const TChain_Problem& other)
@@ -246,8 +246,8 @@ void TChain_Problem::Set_From(const solver::TOptimizing_Problem& problem)
 
 scgms::SPersistent_Filter_Chain_Configuration TChain_Problem::Pop_Configuration(const double* solution) const
 {
-    // A default-constructed configuration is NOT empty, the shared wrapper manufactures one, so
-    // the pool has to be tracked with a flag rather than by testing the pointer.
+    // A default-constructed SPersistent_Filter_Chain_Configuration is non-null, so a pool hit
+    // cannot be detected by testing the pointer.
     scgms::SPersistent_Filter_Chain_Configuration configuration;
     bool from_pool = false;
 
@@ -276,7 +276,7 @@ scgms::SPersistent_Filter_Chain_Configuration TChain_Problem::Pop_Configuration(
         }
     }
 
-    // Write the candidate into the filters that are being optimized.
+    // Apply the candidate to the optimized filters.
     for (const auto& target : mPatch_Targets)
     {
         auto link = configuration[target.filter_index];
@@ -339,8 +339,8 @@ pagmo::vector_double TChain_Problem::fitness(const pagmo::vector_double& x) cons
         CTerminal_Sink sink;
         refcnt::Swstr_list errors;
 
-        // The executor must die before we read the metric: the signal-error filter fills it
-        // in its destructor, exactly as the in-process optimizer relies on.
+        // Scoped: the signal-error filter writes the promised metric in its destructor, so the
+        // executor must be released before Get_Metric.
         scgms::SFilter_Executor executor{configuration, On_Filter_Created_Wrapper, &harvester, errors, &sink};
         if (executor)
         {
@@ -357,10 +357,8 @@ pagmo::vector_double TChain_Problem::fitness(const pagmo::vector_double& x) cons
                 }
             }
 
-            // The captured events already end with the shutdown the preceding filters emitted.
-            // When they do, the chain closes on its own and waiting for a second shutdown would
-            // hang, so we only wait when we had to issue one ourselves. This mirrors what the
-            // in-process optimizer does in Calculate_Single_Fitness.
+            // Captured events normally end with Shut_Down. A second one issued after the chain
+            // has closed never reaches the sink, so only wait when this call sent it.
             if (!replayed_shutdown)
             {
                 executor.Execute(scgms::UDevice_Event{scgms::NDevice_Event_Code::Shut_Down});
