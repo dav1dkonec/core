@@ -52,6 +52,7 @@
 #include <pagmo/problem.hpp>
 
 #include "CRemap.h"
+#include "chain_verification.h"
 #include "distributed_solver.h"
 #include "TUdpParams.h"
 #include "udp_dll_wrapper.h"
@@ -180,6 +181,13 @@ namespace scgms_distributed_solver
             // Enable logging
             distSolver.enable_logging();
 
+            // Opt-in check that the workers will compute the same fitness as this process would.
+            // After enable_logging, otherwise the verdict would go to the null logger.
+            if (solveChain && !Read_Env(Env_Verify).empty())
+            {
+                Verify_Chain_Problem(mSetup, mRemap, prob, 5);
+            }
+
             // Without this wait the islands are handed to whoever happens to be connected,
             // which forces the even split and leaves the capability-based plan unused.
             if (!distSolver.wait_until_workers_connect(Worker_Connect_Timeout))
@@ -190,12 +198,12 @@ namespace scgms_distributed_solver
                     const std::string msg = "No worker connected within "
                         + std::to_string(Worker_Connect_Timeout.count())
                         + " s, cannot run the distributed solver";
-                    spdlog::error("{}", msg);
+                    dist_logger()->error("{}", msg);
                     std::cerr << msg << std::endl;
                     return false;
                 }
 
-                spdlog::warn("Only {} of {} workers connected, continuing with those",
+                dist_logger()->warn("Only {} of {} workers connected, continuing with those",
                              connected, expectedWorkerCount);
             }
 
