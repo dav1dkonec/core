@@ -64,32 +64,39 @@ scgms::UDevice_Event TChain_Event::To_Event() const
 namespace
 {
     // Sits at the end of the chain and lets us wait until the shutdown event arrives.
-    class CTerminal_Sink : public scgms::CBase_Filter
+    // Not reference counted on purpose: it lives on the stack, so the chain must not be able
+    // to delete it. This mirrors CTerminal_Filter, which the in-process optimizer uses.
+    class CTerminal_Sink : public virtual scgms::IFilter, public virtual refcnt::CNotReferenced
     {
         std::mutex mGuard{};
         std::condition_variable mShutdown{};
         bool mShutdown_Received = false;
 
-    protected:
-        HRESULT Do_Configure(scgms::SFilter_Configuration, refcnt::Swstr_list&) override
+    public:
+        HRESULT IfaceCalling Configure(scgms::IFilter_Configuration*, refcnt::wstr_list*) noexcept override
         {
             return S_OK;
         }
 
-        HRESULT Do_Execute(scgms::UDevice_Event event) override
+        HRESULT IfaceCalling Execute(scgms::IDevice_Event* event) noexcept override
         {
-            if (event.event_code() == scgms::NDevice_Event_Code::Shut_Down)
+            if (!event)
+            {
+                return E_INVALIDARG;
+            }
+
+            scgms::TDevice_Event* raw = nullptr;
+            const HRESULT rc = event->Raw(&raw);
+            if (rc == S_OK && raw->event_code == scgms::NDevice_Event_Code::Shut_Down)
             {
                 std::unique_lock<std::mutex> lock{mGuard};
                 mShutdown_Received = true;
                 mShutdown.notify_all();
             }
 
-            return S_OK;
+            event->Release();   //we are the last one, nobody else will
+            return rc;
         }
-
-    public:
-        CTerminal_Sink() : scgms::CBase_Filter(nullptr) {}
 
         void Wait_For_Shutdown()
         {
@@ -326,16 +333,28 @@ pagmo::vector_double TChain_Problem::fitness(const pagmo::vector_double& x) cons
         scgms::SFilter_Executor executor{configuration, On_Filter_Created_Wrapper, &harvester, errors, &sink};
         if (executor)
         {
+            bool replayed_shutdown = false;
+
             for (const auto& event : mEvents)
             {
+                replayed_shutdown = event.event_code == static_cast<uint32_t>(scgms::NDevice_Event_Code::Shut_Down);
+
                 if (!Succeeded(executor.Execute(event.To_Event())))
                 {
+                    replayed_shutdown = false;
                     break;
                 }
             }
 
-            executor.Execute(scgms::UDevice_Event{scgms::NDevice_Event_Code::Shut_Down});
-            sink.Wait_For_Shutdown();
+            // The captured events already end with the shutdown the preceding filters emitted.
+            // When they do, the chain closes on its own and waiting for a second shutdown would
+            // hang, so we only wait when we had to issue one ourselves. This mirrors what the
+            // in-process optimizer does in Calculate_Single_Fitness.
+            if (!replayed_shutdown)
+            {
+                executor.Execute(scgms::UDevice_Event{scgms::NDevice_Event_Code::Shut_Down});
+                sink.Wait_For_Shutdown();
+            }
         }
     }
 
