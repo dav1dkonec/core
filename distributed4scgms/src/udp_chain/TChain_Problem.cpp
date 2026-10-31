@@ -246,7 +246,10 @@ void TChain_Problem::Set_From(const solver::TOptimizing_Problem& problem)
 
 scgms::SPersistent_Filter_Chain_Configuration TChain_Problem::Pop_Configuration(const double* solution) const
 {
+    // A default-constructed configuration is NOT empty, the shared wrapper manufactures one, so
+    // the pool has to be tracked with a flag rather than by testing the pointer.
     scgms::SPersistent_Filter_Chain_Configuration configuration;
+    bool from_pool = false;
 
     {
         std::lock_guard<std::mutex> lock{mPool_Guard};
@@ -254,16 +257,22 @@ scgms::SPersistent_Filter_Chain_Configuration TChain_Problem::Pop_Configuration(
         {
             configuration = std::move(mPool.top());
             mPool.pop();
+            from_pool = true;
         }
     }
 
-    if (!configuration)
+    if (!from_pool)
     {
+        if (!configuration)
+        {
+            return {};
+        }
+
         refcnt::Swstr_list errors;
-        configuration = scgms::SPersistent_Filter_Chain_Configuration{};
         if (configuration->Load_From_Memory(mBody_Ini.data(), mBody_Ini.size(), errors.get()) != S_OK)
         {
-            return scgms::SPersistent_Filter_Chain_Configuration{};
+            configuration.reset();
+            return configuration;
         }
     }
 
@@ -271,12 +280,13 @@ scgms::SPersistent_Filter_Chain_Configuration TChain_Problem::Pop_Configuration(
     for (const auto& target : mPatch_Targets)
     {
         auto link = configuration[target.filter_index];
-        auto parameter = link.Resolve_Parameter(target.parameter_name.c_str());
+        auto parameter = link ? link.Resolve_Parameter(target.parameter_name.c_str()) : scgms::SFilter_Parameter{};
 
         scgms::IModel_Parameter_Vector* parameters = nullptr;
         if (!parameter || parameter->Get_Model_Parameters(&parameters) != S_OK)
         {
-            return scgms::SPersistent_Filter_Chain_Configuration{};
+            configuration.reset();
+            return configuration;
         }
 
         double* begin = nullptr;
@@ -292,7 +302,8 @@ scgms::SPersistent_Filter_Chain_Configuration TChain_Problem::Pop_Configuration(
 
         if (!ok)
         {
-            return scgms::SPersistent_Filter_Chain_Configuration{};
+            configuration.reset();
+            return configuration;
         }
     }
 
