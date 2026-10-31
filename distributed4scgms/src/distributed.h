@@ -52,6 +52,8 @@
 #include <pagmo/problem.hpp>
 
 #include "CRemap.h"
+#include "blob_registry.h"
+#include "chain_dataset.h"
 #include "chain_verification.h"
 #include "distributed_solver.h"
 #include "TUdpParams.h"
@@ -157,7 +159,19 @@ namespace scgms_distributed_solver
             // 2) Construct a pagmo UDP using our TProblem wrapper
             //####################################################
             // Maybe set up UDP registry?
-            const void* udpData = solveChain ? static_cast<const void*>(mSetup.optimizing_problem) : originalData;
+            // The replayed events are the same for every work unit, so they are registered once
+            // as a blob and the UDP only carries the key; see udp_base::required_blob_key().
+            std::string datasetKey;
+            if (solveChain)
+            {
+                auto dataset = chain_dataset::Encode(mSetup.optimizing_problem->events,
+                                                     mSetup.optimizing_problem->event_count);
+                datasetKey = blob_registry::make_key(dataset);
+                blob_registry::get().put(datasetKey, std::move(dataset));
+            }
+
+            const chain_dataset::TChain_Udp_Data chainData{mSetup.optimizing_problem, datasetKey.c_str()};
+            const void* udpData = solveChain ? static_cast<const void*>(&chainData) : originalData;
             TUdpParams udpParams = {udpData, ExtractSerializable(mSetup)};
             udp_dll_wrapper udp{libName, udpParams};
             const pagmo::problem prob{udp};

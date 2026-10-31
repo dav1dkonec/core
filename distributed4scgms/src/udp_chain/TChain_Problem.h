@@ -52,8 +52,11 @@ class TChain_Problem : public udp_base
 
     // Optimizing body of the chain, as produced by Save_To_Memory().
     std::string mBody_Ini{};
-    // Output of the filters that precede the body. Replayed once per candidate.
+    // Output of the filters that precede the body. Replayed once per candidate. Identical for
+    // every work unit, so it is not serialized; only mDataset_Key travels and the events are
+    // fetched once per process through udp_base::required_blob_key().
     std::vector<TChain_Event> mEvents{};
+    std::string mDataset_Key{};
     std::vector<TChain_Patch_Target> mPatch_Targets{};
 
     // Pool of built configurations, reused across evaluations. Not serialized; the entries
@@ -71,6 +74,10 @@ public:
     pagmo::vector_double::size_type get_nobj() const override;
     std::string get_name() const override;
 
+    std::string required_blob_key() const override;
+    bool has_required_blob() const override;
+    void accept_blob(const std::vector<std::byte>& blob) override;
+
     // REQUIRED by udp_base
     std::string get_lib_file_name() override;
 
@@ -80,7 +87,8 @@ public:
     void Set_Params(const TUdpParamsSerializable& params);
 
     // Deep-copies the description; the source is only valid for the duration of the solver call.
-    void Set_From(const solver::TOptimizing_Problem& problem);
+    // datasetKey names the blob the events were registered under by the adapter.
+    void Set_From(const solver::TOptimizing_Problem& problem, std::string datasetKey);
 
 private:
     // Takes a configuration from the pool or builds one, then writes the candidate into it.
@@ -100,7 +108,7 @@ private:
         ar << mRemap;
         ar << mParams;
         ar << mBody_Ini;
-        ar << mEvents;
+        ar << mDataset_Key;
         ar << mPatch_Targets;
     }
 
@@ -112,7 +120,7 @@ private:
         ar >> mRemap;
         ar >> mParams;
         ar >> mBody_Ini;
-        ar >> mEvents;
+        ar >> mDataset_Key;
         ar >> mPatch_Targets;
     }
 

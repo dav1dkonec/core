@@ -1,5 +1,7 @@
 #include "TChain_Problem.h"
 
+#include "../chain_dataset.h"
+
 #include <scgms/rtl/referencedImpl.h>
 
 #include <condition_variable>
@@ -162,6 +164,7 @@ TChain_Problem::TChain_Problem(const TChain_Problem& other) : udp_base(other),
                                                               mParams(other.mParams),
                                                               mBody_Ini(other.mBody_Ini),
                                                               mEvents(other.mEvents),
+                                                              mDataset_Key(other.mDataset_Key),
                                                               mPatch_Targets(other.mPatch_Targets)
 {
     // The pool is not copied; its entries belong to the process that built them.
@@ -179,6 +182,7 @@ TChain_Problem& TChain_Problem::operator=(const TChain_Problem& other)
     mParams = other.mParams;
     mBody_Ini = other.mBody_Ini;
     mEvents = other.mEvents;
+    mDataset_Key = other.mDataset_Key;
     mPatch_Targets = other.mPatch_Targets;
 
     return *this;
@@ -198,8 +202,10 @@ void TChain_Problem::Set_Params(const TUdpParamsSerializable& params)
     mRemap = CRemap{mParams.lower_bound_vec, mParams.upper_bound_vec};
 }
 
-void TChain_Problem::Set_From(const solver::TOptimizing_Problem& problem)
+void TChain_Problem::Set_From(const solver::TOptimizing_Problem& problem, std::string datasetKey)
 {
+    mDataset_Key = std::move(datasetKey);
+
     if (problem.body_ini && problem.body_ini_len > 0)
     {
         mBody_Ini.assign(problem.body_ini, problem.body_ini_len);
@@ -395,6 +401,44 @@ std::string TChain_Problem::get_name() const
     return "SmartCGMS filter chain";
 }
 
+std::string TChain_Problem::required_blob_key() const
+{
+    return mDataset_Key;
+}
+
+bool TChain_Problem::has_required_blob() const
+{
+    return mDataset_Key.empty() || !mEvents.empty();
+}
+
+void TChain_Problem::accept_blob(const std::vector<std::byte>& blob)
+{
+    std::vector<TChain_Event> decoded;
+
+    const bool ok = chain_dataset::Decode(blob,
+        [&decoded](const chain_dataset::TEvent_Header& header, std::vector<double> parameters)
+        {
+            TChain_Event event;
+            event.event_code = header.event_code;
+            event.device_id = header.device_id;
+            event.signal_id = header.signal_id;
+            event.device_time = header.device_time;
+            event.segment_id = header.segment_id;
+            event.level = header.level;
+            event.has_parameters = !parameters.empty();
+            event.parameters = std::move(parameters);
+
+            decoded.push_back(std::move(event));
+        });
+
+    if (!ok)
+    {
+        throw std::runtime_error("Data set " + mDataset_Key + " is truncated or has an unexpected format");
+    }
+
+    mEvents = std::move(decoded);
+}
+
 std::string TChain_Problem::get_lib_file_name()
 {
     return "tchain_udp";
@@ -419,10 +463,15 @@ TChain_Problem* allocator(const std::any& params)
             const auto& casted = std::any_cast<TUdpParams>(params);
             problem->Set_Params(casted.params);
 
-            // The adapter puts the chain description here; see TSolver_Setup::optimizing_problem.
+            // The adapter puts chain_dataset::TChain_Udp_Data here; see distributed.h.
             if (casted.data)
             {
-                problem->Set_From(*static_cast<const solver::TOptimizing_Problem*>(casted.data));
+                const auto* chainData = static_cast<const chain_dataset::TChain_Udp_Data*>(casted.data);
+                if (chainData->problem)
+                {
+                    problem->Set_From(*chainData->problem,
+                                      chainData->dataset_key ? chainData->dataset_key : "");
+                }
             }
         }
         catch (...)
