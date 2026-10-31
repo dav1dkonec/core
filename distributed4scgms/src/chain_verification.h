@@ -13,10 +13,11 @@ namespace scgms_distributed_solver
     constexpr const char* Env_Verify = "SCGMS_DISTRIBUTED_VERIFY";
 
     /**
-     * Evaluates the same candidates through the UDP that is sent to the workers and through
-     * TSolver_Setup::objective. Both run in the calling process; no worker is involved.
+     * Evaluates the same candidates three ways in the calling process: through the UDP that is
+     * sent to the workers, through a copy of it put through the same Boost archive the work
+     * container uses, and through TSolver_Setup::objective. No worker is involved.
      *
-     * Covers the UDP's chain reconstruction only, not serialization or transport.
+     * Covers chain reconstruction and serialization, not transport.
      *
      * @param sampleCount candidates taken at even steps between the remapped bounds
      * @return the largest absolute difference, or NaN if either side failed to evaluate
