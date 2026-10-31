@@ -80,6 +80,10 @@ public:
                   std::vector<TChain_Patch_Target> patchTargets);
     void Set_Params(const TUdpParamsSerializable& params);
 
+    // Copies the description the optimizer put into TSolver_Setup. Everything is copied,
+    // because the original lives only for the duration of the solver call.
+    void Set_From(const solver::TOptimizing_Problem& problem);
+
 private:
     // Takes a configuration from the pool or builds one, then writes the candidate into it.
     scgms::SPersistent_Filter_Chain_Configuration Pop_Configuration(const double* solution) const;

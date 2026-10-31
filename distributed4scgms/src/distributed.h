@@ -92,7 +92,10 @@ namespace scgms_distributed_solver
             const size_t popSize = mSetup.population_size;
             const size_t generationCount = mSetup.max_generations;
             const size_t numOfObjectives = mSetup.objectives_count;
-            const std::string libName = mSolverData->solver_lib_name;
+            // A chain problem is evaluated by the worker itself, so it needs a different library
+            // than the self-contained benchmarks; see TSolver_Setup::optimizing_problem.
+            const bool solveChain = mSetup.optimizing_problem != nullptr;
+            const std::string libName = solveChain ? "tchain_udp" : mSolverData->solver_lib_name;
             const std::string controllerAddress = mSolverData->controller_address;
             const size_t expectedWorkerCount = mSolverData->expected_worker_count;
             const void* originalData = mSolverData->solverData;
@@ -106,7 +109,8 @@ namespace scgms_distributed_solver
             // 2) Construct a pagmo UDP using our TProblem wrapper
             //####################################################
             // Maybe set up UDP registry?
-            TUdpParams udpParams = {originalData, ExtractSerializable(mSetup)};
+            const void* udpData = solveChain ? static_cast<const void*>(mSetup.optimizing_problem) : originalData;
+            TUdpParams udpParams = {udpData, ExtractSerializable(mSetup)};
             udp_dll_wrapper udp{libName, udpParams};
             const pagmo::problem prob{udp};
 

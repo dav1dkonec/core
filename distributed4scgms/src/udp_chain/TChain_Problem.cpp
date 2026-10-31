@@ -191,6 +191,52 @@ void TChain_Problem::Set_Params(const TUdpParamsSerializable& params)
     mRemap = CRemap{mParams.lower_bound_vec, mParams.upper_bound_vec};
 }
 
+void TChain_Problem::Set_From(const solver::TOptimizing_Problem& problem)
+{
+    if (problem.body_ini && problem.body_ini_len > 0)
+    {
+        mBody_Ini.assign(problem.body_ini, problem.body_ini_len);
+    }
+
+    mEvents.clear();
+    mEvents.reserve(problem.event_count);
+    for (size_t i = 0; i < problem.event_count; i++)
+    {
+        const auto& source = problem.events[i];
+
+        TChain_Event event;
+        event.event_code = source.event_code;
+        event.device_id = source.device_id;
+        event.signal_id = source.signal_id;
+        event.device_time = source.device_time;
+        event.segment_id = source.segment_id;
+        event.level = source.level;
+
+        if (source.parameters && source.parameter_count > 0)
+        {
+            event.parameters.assign(source.parameters, source.parameters + source.parameter_count);
+            event.has_parameters = true;
+        }
+
+        mEvents.push_back(std::move(event));
+    }
+
+    mPatch_Targets.clear();
+    mPatch_Targets.reserve(problem.parameter_count);
+    for (size_t i = 0; i < problem.parameter_count; i++)
+    {
+        const auto& source = problem.parameters[i];
+
+        TChain_Patch_Target target;
+        target.filter_index = source.filter_index;
+        target.parameter_name = source.config_name ? source.config_name : L"";
+        target.offset = source.offset;
+        target.count = source.count;
+
+        mPatch_Targets.push_back(std::move(target));
+    }
+}
+
 scgms::SPersistent_Filter_Chain_Configuration TChain_Problem::Pop_Configuration(const double* solution) const
 {
     scgms::SPersistent_Filter_Chain_Configuration configuration;
@@ -342,7 +388,14 @@ TChain_Problem* allocator(const std::any& params)
     {
         try
         {
-            problem->Set_Params(std::any_cast<TUdpParams>(params).params);
+            const auto& casted = std::any_cast<TUdpParams>(params);
+            problem->Set_Params(casted.params);
+
+            // The adapter puts the chain description here; see TSolver_Setup::optimizing_problem.
+            if (casted.data)
+            {
+                problem->Set_From(*static_cast<const solver::TOptimizing_Problem*>(casted.data));
+            }
         }
         catch (...)
         {
