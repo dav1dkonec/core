@@ -45,6 +45,7 @@
 #include <numeric>
 #include <limits>
 #include <chrono>
+#include <cstdlib>
 #include <iostream>
 
 #include <pagmo/types.hpp>
@@ -57,7 +58,6 @@
 #include "udp_registry.h"
 #include "pagmo/algorithms/de.hpp"
 #include "pagmo/algorithms/gaco.hpp"
-#include "scgms/iface/DistributedSolverIface.h"
 #include "mo_benchmark.h"
 #include "so_benchmark.h"
 
@@ -65,6 +65,54 @@ namespace scgms_distributed_solver
 {
     // How long to wait for the expected workers before giving up.
     constexpr std::chrono::seconds Worker_Connect_Timeout{60};
+
+    // Where the cluster lives is a property of the deployment, not of the experiment, so it
+    // comes from the environment. The .ini stays portable and TSolver_Setup.data stays the
+    // optimizer's, which is what the SmartCGMS contract says it is.
+    constexpr const char* Env_Controller_Address = "SCGMS_DISTRIBUTED_CONTROLLER";
+    constexpr const char* Env_Worker_Count = "SCGMS_DISTRIBUTED_WORKERS";
+    constexpr const char* Env_Udp_Library = "SCGMS_DISTRIBUTED_UDP_LIB";
+    constexpr const char* Env_Cache_Dir = "SCGMS_DISTRIBUTED_CACHE_DIR";
+
+    inline std::string Read_Env(const char* name)
+    {
+#ifdef _MSC_VER
+        char* buffer = nullptr;
+        size_t length = 0;
+        if (_dupenv_s(&buffer, &length, name) != 0 || !buffer)
+            return {};
+
+        std::string value{buffer};
+        free(buffer);
+        return value;
+#else
+        const char* value = std::getenv(name);
+        return value ? std::string{value} : std::string{};
+#endif
+    }
+
+    inline std::string Read_Env(const char* name, const std::string& fallback)
+    {
+        const std::string value = Read_Env(name);
+        return value.empty() ? fallback : value;
+    }
+
+    inline size_t Read_Env(const char* name, const size_t fallback)
+    {
+        const std::string value = Read_Env(name);
+        if (value.empty())
+            return fallback;
+
+        try
+        {
+            return static_cast<size_t>(std::stoull(value));
+        }
+        catch (...)
+        {
+            dist_logger()->warn("{} is not a number: {}; using {}", name, value, fallback);
+            return fallback;
+        }
+    }
 
     //#############################################################################################
     //# CDistributed_Solver - SCGMS adapter
@@ -74,15 +122,12 @@ namespace scgms_distributed_solver
     protected:
         solver::TSolver_Setup mSetup;
         CRemap mRemap;
-        solver::TDistributedSolver_Data* mSolverData;
 
     public:
         CDistributed_Solver(const solver::TSolver_Setup& setup)
             : mSetup(solver::Check_Default_Parameters(setup, 100'000, 100)),
               mRemap(setup)
         {
-            // We assume that the user provides us with the right data object
-            mSolverData = reinterpret_cast<solver::TDistributedSolver_Data*>(const_cast<void*>(mSetup.data));
         }
 
         bool Solve(solver::TSolver_Progress& progress)
@@ -95,13 +140,16 @@ namespace scgms_distributed_solver
             // A chain problem is evaluated by the worker itself, so it needs a different library
             // than the self-contained benchmarks; see TSolver_Setup::optimizing_problem.
             const bool solveChain = mSetup.optimizing_problem != nullptr;
-            const std::string libName = solveChain ? "tchain_udp" : mSolverData->solver_lib_name;
-            const std::string controllerAddress = mSolverData->controller_address;
-            const size_t expectedWorkerCount = mSolverData->expected_worker_count;
-            const void* originalData = mSolverData->solverData;
+            const std::string libName = solveChain
+                                            ? std::string{"tchain_udp"}
+                                            : Read_Env(Env_Udp_Library, std::string{"tproblem_udp"});
+            const std::string controllerAddress = Read_Env(Env_Controller_Address, std::string{"tcp://0.0.0.0:5555"});
+            const size_t expectedWorkerCount = Read_Env(Env_Worker_Count, static_cast<size_t>(1));
+            const void* originalData = mSetup.data;
 
-            if (!mSolverData->local_cache_dir.empty())
-                udp_registry::get().set_local_cache_dir(mSolverData->local_cache_dir);
+            const std::string cacheDir = Read_Env(Env_Cache_Dir);
+            if (!cacheDir.empty())
+                udp_registry::get().set_local_cache_dir(cacheDir);
 
             progress = solver::Null_Solver_Progress;
             bool succeeded = false;
