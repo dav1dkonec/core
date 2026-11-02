@@ -5,9 +5,8 @@
 #include <scgms/rtl/referencedImpl.h>
 #include <scgms/utils/string_utils.h>
 
-#include "logger_init.h"
-
 #include <condition_variable>
+#include <iostream>
 #include <limits>
 
 //#############################################################################################
@@ -253,6 +252,15 @@ void TChain_Problem::Set_From(const solver::TOptimizing_Problem& problem, std::s
     }
 }
 
+// Diagnostics go to stderr, not through dist_logger(). The logger is a singleton in a static
+// library, so this module holds its own instance, which nothing configures: it keeps the default
+// null sink at level off and discards every message. The host captures stderr, as main.cpp does
+// for fatal errors.
+void TChain_Problem::Report(const std::string& message)
+{
+    std::cerr << "tchain_udp: " << message << std::endl;
+}
+
 void TChain_Problem::Report_Failure(const std::string& stage) const
 {
     if (mFailure_Reported.exchange(true))
@@ -260,7 +268,7 @@ void TChain_Problem::Report_Failure(const std::string& stage) const
         return;
     }
 
-    dist_logger()->error("Cannot evaluate the filter chain, {}", stage);
+    Report("cannot evaluate the filter chain, " + stage);
 }
 
 void TChain_Problem::Report_Failure(const std::string& stage, refcnt::Swstr_list& errors) const
@@ -280,14 +288,7 @@ void TChain_Problem::Report_Failure(const std::string& stage, refcnt::Swstr_list
         detail += Narrow_WString(line);
     });
 
-    if (detail.empty())
-    {
-        dist_logger()->error("Cannot evaluate the filter chain, {}", stage);
-    }
-    else
-    {
-        dist_logger()->error("Cannot evaluate the filter chain, {}: {}", stage, detail);
-    }
+    Report("cannot evaluate the filter chain, " + stage + (detail.empty() ? "" : ": " + detail));
 }
 
 scgms::SPersistent_Filter_Chain_Configuration TChain_Problem::Pop_Configuration(const double* solution) const
@@ -421,6 +422,15 @@ pagmo::vector_double TChain_Problem::fitness(const pagmo::vector_double& x) cons
     }
 
     harvested = harvester.Get_Metric(result.data());
+
+    // Once per instance: a chain that builds but replays nothing still yields a metric, so the
+    // event count is the only way to tell a real evaluation from an empty one.
+    if (!mShape_Reported.exchange(true))
+    {
+        Report("chain evaluated, " + std::to_string(mEvents.size()) + " replayed events, "
+               + std::to_string(harvested) + " of " + std::to_string(mParams.objectives_count)
+               + " objectives harvested");
+    }
 
     Push_Configuration(std::move(configuration));
 

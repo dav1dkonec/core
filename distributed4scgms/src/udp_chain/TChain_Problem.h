@@ -69,6 +69,9 @@ class TChain_Problem : public udp_base
     // a misconfigured node would otherwise repeat the same message for every candidate.
     mutable std::atomic<bool> mFailure_Reported{false};
 
+    // Same, for the one-off line describing what a successful evaluation actually did.
+    mutable std::atomic<bool> mShape_Reported{false};
+
 public:
     TChain_Problem();
     TChain_Problem(const TChain_Problem& other);
@@ -104,6 +107,7 @@ private:
     // for every candidate and the controller has no way to tell why.
     void Report_Failure(const std::string& stage) const;
     void Report_Failure(const std::string& stage, refcnt::Swstr_list& errors) const;
+    static void Report(const std::string& message);
 
     //####################################
     //# BOOST SERIALIZE
