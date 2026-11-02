@@ -3,6 +3,9 @@
 #include "../chain_dataset.h"
 
 #include <scgms/rtl/referencedImpl.h>
+#include <scgms/utils/string_utils.h>
+
+#include "logger_init.h"
 
 #include <condition_variable>
 #include <limits>
@@ -250,6 +253,43 @@ void TChain_Problem::Set_From(const solver::TOptimizing_Problem& problem, std::s
     }
 }
 
+void TChain_Problem::Report_Failure(const std::string& stage) const
+{
+    if (mFailure_Reported.exchange(true))
+    {
+        return;
+    }
+
+    dist_logger()->error("Cannot evaluate the filter chain, {}", stage);
+}
+
+void TChain_Problem::Report_Failure(const std::string& stage, refcnt::Swstr_list& errors) const
+{
+    if (mFailure_Reported.exchange(true))
+    {
+        return;
+    }
+
+    std::string detail;
+    errors.for_each([&detail](const std::wstring& line)
+    {
+        if (!detail.empty())
+        {
+            detail += "; ";
+        }
+        detail += Narrow_WString(line);
+    });
+
+    if (detail.empty())
+    {
+        dist_logger()->error("Cannot evaluate the filter chain, {}", stage);
+    }
+    else
+    {
+        dist_logger()->error("Cannot evaluate the filter chain, {}: {}", stage, detail);
+    }
+}
+
 scgms::SPersistent_Filter_Chain_Configuration TChain_Problem::Pop_Configuration(const double* solution) const
 {
     // A default-constructed SPersistent_Filter_Chain_Configuration is non-null, so a pool hit
@@ -277,6 +317,7 @@ scgms::SPersistent_Filter_Chain_Configuration TChain_Problem::Pop_Configuration(
         refcnt::Swstr_list errors;
         if (configuration->Load_From_Memory(mBody_Ini.data(), mBody_Ini.size(), errors.get()) != S_OK)
         {
+            Report_Failure("the shipped ini did not load", errors);
             configuration.reset();
             return configuration;
         }
@@ -291,6 +332,8 @@ scgms::SPersistent_Filter_Chain_Configuration TChain_Problem::Pop_Configuration(
         scgms::IModel_Parameter_Vector* parameters = nullptr;
         if (!parameter || parameter->Get_Model_Parameters(&parameters) != S_OK)
         {
+            Report_Failure("filter " + std::to_string(target.filter_index) + " has no parameter "
+                           + Narrow_WString(target.parameter_name));
             configuration.reset();
             return configuration;
         }
@@ -348,7 +391,11 @@ pagmo::vector_double TChain_Problem::fitness(const pagmo::vector_double& x) cons
         // Scoped: the signal-error filter writes the promised metric in its destructor, so the
         // executor must be released before Get_Metric.
         scgms::SFilter_Executor executor{configuration, On_Filter_Created_Wrapper, &harvester, errors, &sink};
-        if (executor)
+        if (!executor)
+        {
+            Report_Failure("the chain could not be instantiated", errors);
+        }
+        else
         {
             bool replayed_shutdown = false;
 
@@ -379,6 +426,8 @@ pagmo::vector_double TChain_Problem::fitness(const pagmo::vector_double& x) cons
 
     if (harvested != mParams.objectives_count)
     {
+        Report_Failure("the chain produced " + std::to_string(harvested) + " of "
+                       + std::to_string(mParams.objectives_count) + " objectives");
         std::fill(result.begin(), result.end(), std::numeric_limits<double>::quiet_NaN());
     }
 

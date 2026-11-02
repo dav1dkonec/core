@@ -8,6 +8,7 @@
 #include <scgms/rtl/FilterLib.h>
 
 #include <any>
+#include <atomic>
 #include <mutex>
 #include <stack>
 #include <string>
@@ -64,6 +65,10 @@ class TChain_Problem : public udp_base
     mutable std::mutex mPool_Guard{};
     mutable std::stack<scgms::SPersistent_Filter_Chain_Configuration> mPool{};
 
+    // Set once the first chain failure has been logged. fitness() runs thousands of times and
+    // a misconfigured node would otherwise repeat the same message for every candidate.
+    mutable std::atomic<bool> mFailure_Reported{false};
+
 public:
     TChain_Problem();
     TChain_Problem(const TChain_Problem& other);
@@ -94,6 +99,11 @@ private:
     // Takes a configuration from the pool or builds one, then writes the candidate into it.
     scgms::SPersistent_Filter_Chain_Configuration Pop_Configuration(const double* solution) const;
     void Push_Configuration(scgms::SPersistent_Filter_Chain_Configuration configuration) const;
+
+    // Logs the first chain failure. Without it a node that cannot build the chain returns NaN
+    // for every candidate and the controller has no way to tell why.
+    void Report_Failure(const std::string& stage) const;
+    void Report_Failure(const std::string& stage, refcnt::Swstr_list& errors) const;
 
     //####################################
     //# BOOST SERIALIZE
