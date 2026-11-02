@@ -5,6 +5,7 @@
 #include <scgms/rtl/referencedImpl.h>
 #include <scgms/utils/string_utils.h>
 
+#include <chrono>
 #include <condition_variable>
 #include <iostream>
 #include <limits>
@@ -252,10 +253,8 @@ void TChain_Problem::Set_From(const solver::TOptimizing_Problem& problem, std::s
     }
 }
 
-// Diagnostics go to stderr, not through dist_logger(). The logger is a singleton in a static
-// library, so this module holds its own instance, which nothing configures: it keeps the default
-// null sink at level off and discards every message. The host captures stderr, as main.cpp does
-// for fatal errors.
+// Not dist_logger(): that singleton is per linked image, and this module's instance keeps the
+// default null sink at level off. The host captures stderr, as main.cpp does for fatal errors.
 void TChain_Problem::Report(const std::string& message)
 {
     std::cerr << "tchain_udp: " << message << std::endl;
@@ -372,6 +371,7 @@ void TChain_Problem::Push_Configuration(scgms::SPersistent_Filter_Chain_Configur
 pagmo::vector_double TChain_Problem::fitness(const pagmo::vector_double& x) const
 {
     const auto solution = mRemap.Expand_Solution(x);
+    const auto started = std::chrono::steady_clock::now();
 
     pagmo::vector_double result(solver::Maximum_Objectives_Count, std::numeric_limits<double>::quiet_NaN());
 
@@ -423,13 +423,15 @@ pagmo::vector_double TChain_Problem::fitness(const pagmo::vector_double& x) cons
 
     harvested = harvester.Get_Metric(result.data());
 
-    // Once per instance: a chain that builds but replays nothing still yields a metric, so the
-    // event count is the only way to tell a real evaluation from an empty one.
+    // A chain that replays nothing still yields a metric, so only the event count proves work.
     if (!mShape_Reported.exchange(true))
     {
-        Report("chain evaluated, " + std::to_string(mEvents.size()) + " replayed events, "
-               + std::to_string(harvested) + " of " + std::to_string(mParams.objectives_count)
-               + " objectives harvested");
+        const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - started).count();
+
+        Report("chain evaluated in " + std::to_string(elapsed) + " ms, "
+               + std::to_string(mEvents.size()) + " replayed events, " + std::to_string(harvested)
+               + " of " + std::to_string(mParams.objectives_count) + " objectives harvested");
     }
 
     Push_Configuration(std::move(configuration));

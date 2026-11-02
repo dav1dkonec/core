@@ -65,11 +65,8 @@ class TChain_Problem : public udp_base
     mutable std::mutex mPool_Guard{};
     mutable std::stack<scgms::SPersistent_Filter_Chain_Configuration> mPool{};
 
-    // Set once the first chain failure has been logged. fitness() runs thousands of times and
-    // a misconfigured node would otherwise repeat the same message for every candidate.
+    // Report each diagnostic once; fitness() runs thousands of times.
     mutable std::atomic<bool> mFailure_Reported{false};
-
-    // Same, for the one-off line describing what a successful evaluation actually did.
     mutable std::atomic<bool> mShape_Reported{false};
 
 public:
@@ -103,8 +100,7 @@ private:
     scgms::SPersistent_Filter_Chain_Configuration Pop_Configuration(const double* solution) const;
     void Push_Configuration(scgms::SPersistent_Filter_Chain_Configuration configuration) const;
 
-    // Logs the first chain failure. Without it a node that cannot build the chain returns NaN
-    // for every candidate and the controller has no way to tell why.
+    // Without this a node that cannot build the chain just returns NaN for every candidate.
     void Report_Failure(const std::string& stage) const;
     void Report_Failure(const std::string& stage, refcnt::Swstr_list& errors) const;
     static void Report(const std::string& message);
