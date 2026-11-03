@@ -8,6 +8,7 @@
 #include "logger_init.h"
 
 #include <chrono>
+#include <cmath>
 #include <condition_variable>
 #include <iostream>
 #include <limits>
@@ -260,6 +261,9 @@ namespace
 {
     // Installed by the host right after this library is opened; see lib_loader.
     void (*gLog_Sink)(int level, const char* message) = nullptr;
+
+    // Harvests without a single finite metric before the node is called misconfigured.
+    constexpr size_t Non_Finite_Run = 32;
 }
 
 extern "C" void set_dist_log_sink(void (*sink)(int, const char*))
@@ -280,6 +284,24 @@ void TChain_Problem::Report(const std::string& message)
     else
     {
         std::cerr << line << std::endl;
+    }
+}
+
+void TChain_Problem::Note_Metric(const double metric) const
+{
+    const size_t harvests = ++mHarvests;
+
+    if (std::isfinite(metric))
+    {
+        return;
+    }
+
+    // A metric over no data is harvested all the same, so only a run with nothing finite in it
+    // distinguishes a misconfigured node from a candidate the chain cannot evaluate.
+    if (++mNon_Finite == harvests && harvests == Non_Finite_Run)
+    {
+        Report_Failure("none of the first " + std::to_string(harvests)
+                       + " harvested metrics is finite");
     }
 }
 
@@ -480,6 +502,10 @@ pagmo::vector_double TChain_Problem::fitness(const pagmo::vector_double& x) cons
         Report_Failure("the chain produced " + std::to_string(harvested) + " of "
                        + std::to_string(mParams.objectives_count) + " objectives");
         std::fill(result.begin(), result.end(), std::numeric_limits<double>::quiet_NaN());
+    }
+    else
+    {
+        Note_Metric(result[0]);
     }
 
     result.resize(mParams.objectives_count);

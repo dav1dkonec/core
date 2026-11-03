@@ -69,6 +69,11 @@ class TChain_Problem : public udp_base
     mutable std::atomic<bool> mFailure_Reported{false};
     mutable std::atomic<bool> mShape_Reported{false};
 
+    // One non-finite metric is a candidate the chain cannot evaluate; only an unbroken run of
+    // them means the node produces nothing usable.
+    mutable std::atomic<size_t> mHarvests{0};
+    mutable std::atomic<size_t> mNon_Finite{0};
+
 public:
     TChain_Problem();
     TChain_Problem(const TChain_Problem& other);
@@ -104,6 +109,7 @@ private:
     void Report_Failure(const std::string& stage) const;
     void Report_Failure(const std::string& stage, refcnt::Swstr_list& errors) const;
     static void Report(const std::string& message);
+    void Note_Metric(double metric) const;
 
     //####################################
     //# BOOST SERIALIZE
