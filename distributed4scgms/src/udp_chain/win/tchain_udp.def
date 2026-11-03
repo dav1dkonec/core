@@ -1,0 +1,10 @@
+LIBRARY tchain_udp.dll
+
+
+EXPORTS
+  
+	run_after_load
+	allocator
+	deleter
+	cloner
+	set_dist_log_sink
