@@ -11,6 +11,7 @@
 #include <condition_variable>
 #include <iostream>
 #include <limits>
+#include <sstream>
 
 //#############################################################################################
 //# TChain_Event
@@ -455,10 +456,16 @@ pagmo::vector_double TChain_Problem::fitness(const pagmo::vector_double& x) cons
         const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now() - started).count();
 
+        // The value matters as much as the count: two nodes agreeing on both evaluated the
+        // same chain, and GACO is deterministic for a given population and seed.
+        std::ostringstream metric;
+        metric.precision(10);
+        metric << result[0];
+
         Report("chain evaluated in " + std::to_string(elapsed) + " ms, " + std::to_string(replayed)
                + " of " + std::to_string(mEvents.size()) + " events replayed, "
                + std::to_string(harvested) + " of " + std::to_string(mParams.objectives_count)
-               + " objectives harvested");
+               + " objectives harvested, metric " + metric.str());
     }
 
     Push_Configuration(std::move(configuration));
