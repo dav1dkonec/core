@@ -69,8 +69,7 @@ class TChain_Problem : public udp_base
     mutable std::atomic<bool> mFailure_Reported{false};
     mutable std::atomic<bool> mShape_Reported{false};
 
-    // One non-finite metric is a candidate the chain cannot evaluate; only an unbroken run of
-    // them means the node produces nothing usable.
+    // One NaN is an unevaluable candidate; a whole run of them is a misconfigured node.
     mutable std::atomic<size_t> mHarvests{0};
     mutable std::atomic<size_t> mNon_Finite{0};
 
@@ -110,6 +109,9 @@ private:
     void Report_Failure(const std::string& stage, refcnt::Swstr_list& errors) const;
     static void Report(const std::string& message);
     void Note_Metric(double metric) const;
+
+    // Evaluates the midpoint of the bounds, so two nodes can be compared on one candidate.
+    void Report_Reference_Metric() const;
 
     //####################################
     //# BOOST SERIALIZE

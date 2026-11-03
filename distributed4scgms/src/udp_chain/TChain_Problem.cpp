@@ -9,6 +9,7 @@
 
 #include <chrono>
 #include <cmath>
+#include <cstdlib>
 #include <condition_variable>
 #include <iostream>
 #include <limits>
@@ -262,8 +263,10 @@ namespace
     // Installed by the host right after this library is opened; see lib_loader.
     void (*gLog_Sink)(int level, const char* message) = nullptr;
 
-    // Harvests without a single finite metric before the node is called misconfigured.
     constexpr size_t Non_Finite_Run = 32;
+
+    // Set on a worker to have it evaluate the reference candidate once.
+    constexpr const char* Env_Verify = "SCGMS_DISTRIBUTED_VERIFY";
 }
 
 extern "C" void set_dist_log_sink(void (*sink)(int, const char*))
@@ -296,8 +299,6 @@ void TChain_Problem::Note_Metric(const double metric) const
         return;
     }
 
-    // A metric over no data is harvested all the same, so only a run with nothing finite in it
-    // distinguishes a misconfigured node from a candidate the chain cannot evaluate.
     if (++mNon_Finite == harvests && harvests == Non_Finite_Run)
     {
         Report_Failure("none of the first " + std::to_string(harvests)
@@ -563,6 +564,32 @@ void TChain_Problem::accept_blob(const std::vector<std::byte>& blob)
     }
 
     mEvents = std::move(decoded);
+
+    Report_Reference_Metric();
+}
+
+void TChain_Problem::Report_Reference_Metric() const
+{
+    const char* enabled = std::getenv(Env_Verify);
+    if (!enabled || *enabled == '\0')
+    {
+        return;
+    }
+
+    const auto [lower, upper] = get_bounds();
+
+    pagmo::vector_double candidate(lower.size());
+    for (size_t i = 0; i < candidate.size(); ++i)
+    {
+        candidate[i] = 0.5 * (lower[i] + upper[i]);
+    }
+
+    std::ostringstream metric;
+    metric.precision(12);
+    metric << fitness(candidate)[0];
+
+    Report("reference candidate (midpoint of " + std::to_string(candidate.size())
+           + " bounds) metric " + metric.str());
 }
 
 std::string TChain_Problem::get_lib_file_name()
