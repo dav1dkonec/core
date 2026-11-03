@@ -36,6 +36,7 @@
 
 #include "graph_view.h"
 
+#include <algorithm>
 #include <iomanip>
 #include <unordered_set>
 #include <cmath>
