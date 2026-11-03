@@ -5,6 +5,8 @@
 #include <scgms/rtl/referencedImpl.h>
 #include <scgms/utils/string_utils.h>
 
+#include "logger_init.h"
+
 #include <chrono>
 #include <condition_variable>
 #include <iostream>
@@ -253,11 +255,31 @@ void TChain_Problem::Set_From(const solver::TOptimizing_Problem& problem, std::s
     }
 }
 
-// Not dist_logger(): that singleton is per linked image, and this module's instance keeps the
-// default null sink at level off. The host captures stderr, as main.cpp does for fatal errors.
+namespace
+{
+    // Installed by the host right after this library is opened; see lib_loader.
+    void (*gLog_Sink)(int level, const char* message) = nullptr;
+}
+
+extern "C" void set_dist_log_sink(void (*sink)(int, const char*))
+{
+    gLog_Sink = sink;
+}
+
+// dist_logger() is per linked image and this module's instance is never configured, so messages
+// go to the host's sink; stderr is the fallback before the host installs it.
 void TChain_Problem::Report(const std::string& message)
 {
-    std::cerr << "tchain_udp: " << message << std::endl;
+    const std::string line = "tchain_udp: " + message;
+
+    if (gLog_Sink)
+    {
+        gLog_Sink(static_cast<int>(spdlog::level::info), line.c_str());
+    }
+    else
+    {
+        std::cerr << line << std::endl;
+    }
 }
 
 void TChain_Problem::Report_Failure(const std::string& stage) const
@@ -384,6 +406,8 @@ pagmo::vector_double TChain_Problem::fitness(const pagmo::vector_double& x) cons
 
     CMetric_Harvester harvester;
     size_t harvested = 0;
+    // Events the chain accepted. Execute() failing mid-replay still leaves a metric behind.
+    size_t replayed = 0;
 
     {
         CTerminal_Sink sink;
@@ -409,6 +433,8 @@ pagmo::vector_double TChain_Problem::fitness(const pagmo::vector_double& x) cons
                     replayed_shutdown = false;
                     break;
                 }
+
+                ++replayed;
             }
 
             // Captured events normally end with Shut_Down. A second one issued after the chain
@@ -429,12 +455,18 @@ pagmo::vector_double TChain_Problem::fitness(const pagmo::vector_double& x) cons
         const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now() - started).count();
 
-        Report("chain evaluated in " + std::to_string(elapsed) + " ms, "
-               + std::to_string(mEvents.size()) + " replayed events, " + std::to_string(harvested)
-               + " of " + std::to_string(mParams.objectives_count) + " objectives harvested");
+        Report("chain evaluated in " + std::to_string(elapsed) + " ms, " + std::to_string(replayed)
+               + " of " + std::to_string(mEvents.size()) + " events replayed, "
+               + std::to_string(harvested) + " of " + std::to_string(mParams.objectives_count)
+               + " objectives harvested");
     }
 
     Push_Configuration(std::move(configuration));
+
+    if (replayed != mEvents.size())
+    {
+        Report_Failure("the chain rejected event " + std::to_string(replayed));
+    }
 
     if (harvested != mParams.objectives_count)
     {
