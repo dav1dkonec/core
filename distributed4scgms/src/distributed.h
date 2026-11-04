@@ -38,6 +38,7 @@
 
 #pragma once
 
+#include <scgms/rtl/FilesystemLib.h>
 #include <scgms/rtl/SolverLib.h>
 
 #include <algorithm>
@@ -152,6 +153,10 @@ namespace scgms_distributed_solver
             const std::string cacheDir = Read_Env(Env_Cache_Dir);
             if (!cacheDir.empty())
                 udp_registry::get().set_local_cache_dir(cacheDir);
+
+            // Prefer a library shipped with this build over fetching one from a peer.
+            // The application dir, not Get_Dll_Dir(), because filters live one level deeper.
+            udp_registry::get().add_lib_search_dir(Get_Application_Dir());
 
             progress = solver::Null_Solver_Progress;
             bool succeeded = false;
