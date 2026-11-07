@@ -48,6 +48,53 @@ namespace scgms_distributed_solver
         distributed_solver_generic,
         L"Generic distributed solver"
     );
+
+    const wchar_t* rsController_Address = L"Controller_Address";
+    const wchar_t* rsExpected_Workers = L"Expected_Workers";
+    const wchar_t* rsCache_Dir = L"Cache_Dir";
+    const wchar_t* rsWorker_Connect_Timeout = L"Worker_Connect_Timeout";
+
+    constexpr size_t settings_param_count = 4;
+
+    constexpr scgms::NParameter_Type settings_param_type[settings_param_count] = {
+        scgms::NParameter_Type::ptWChar_Array,
+        scgms::NParameter_Type::ptInt64,
+        scgms::NParameter_Type::ptWChar_Array,
+        scgms::NParameter_Type::ptRatTime
+    };
+
+    const wchar_t* settings_ui_param_name[settings_param_count] = {
+        L"Controller address",
+        L"Expected workers",
+        L"Cache directory",
+        L"Worker connect timeout"
+    };
+
+    const wchar_t* settings_config_param_name[settings_param_count] = {
+        rsController_Address,
+        rsExpected_Workers,
+        rsCache_Dir,
+        rsWorker_Connect_Timeout
+    };
+
+    const wchar_t* settings_ui_param_tooltip[settings_param_count] = {
+        L"Address the controller binds to, e.g. tcp://0.0.0.0:5555",
+        L"How many workers to wait for before the work is planned",
+        L"Where fetched problem libraries and data sets are kept",
+        L"How long to wait for the expected workers"
+    };
+
+    // Flags stay None on purpose; Presentation_Only would keep the filter out of the optimization.
+    const scgms::TFilter_Descriptor settings_filter_desc = {
+        settings_filter_id,
+        scgms::NFilter_Flags::None,
+        L"Distributed solver settings",
+        settings_param_count,
+        settings_param_type,
+        settings_ui_param_name,
+        settings_config_param_name,
+        settings_ui_param_tooltip
+    };
 }
 
 
@@ -55,9 +102,19 @@ const std::array<scgms::TSolver_Descriptor, 1> solver_descriptions = {
     scgms_distributed_solver::distributed_solver_generic_desc,
 };
 
+const std::array<scgms::TFilter_Descriptor, 1> filter_descriptions = {
+    scgms_distributed_solver::settings_filter_desc,
+};
+
 
 DLL_EXPORT HRESULT IfaceCalling do_get_solver_descriptors(scgms::TSolver_Descriptor** begin,
                                                           scgms::TSolver_Descriptor** end)
 {
     return do_get_descriptors(solver_descriptions, begin, end);
+}
+
+DLL_EXPORT HRESULT IfaceCalling do_get_filter_descriptors(scgms::TFilter_Descriptor** begin,
+                                                          scgms::TFilter_Descriptor** end)
+{
+    return do_get_descriptors(filter_descriptions, begin, end);
 }

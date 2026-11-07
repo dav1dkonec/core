@@ -274,8 +274,8 @@ extern "C" void set_dist_log_sink(void (*sink)(int, const char*))
     gLog_Sink = sink;
 }
 
-// dist_logger() is per linked image and this module's instance is never configured, so messages
-// go to the host's sink; stderr is the fallback before the host installs it.
+// This module is a separate linked image and cannot reach the host's dist_logger(), so messages
+// go through the sink it installs; stderr is the fallback until then.
 void TChain_Problem::Report(const std::string& message)
 {
     const std::string line = "tchain_udp: " + message;

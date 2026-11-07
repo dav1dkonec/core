@@ -45,4 +45,14 @@ namespace scgms_distributed_solver
 {
 	constexpr GUID distributed_solver_generic = {0x7c9d3a41, 0x2f6b, 0x4e8d, {0xa1, 0x5c, 0x9e, 0x73, 0x4b, 0xd2, 0x11, 0xf8}};
 	// {7C9D3A41-2F6B-4E8D-A15C-9E734BD211F8}
+
+	// Carries the deployment settings into the solver through the regular .ini path, because
+	// TSolver_Descriptor has no configuration parameters while a filter descriptor has.
+	constexpr GUID settings_filter_id = {0x2bcf95e7, 0x10f3, 0x475b, {0xbf, 0x6d, 0x64, 0x52, 0xe6, 0x4f, 0x4d, 0x0b}};
+	// {2BCF95E7-10F3-475B-BF6D-6452E64F4D0B}
+
+	extern const wchar_t* rsController_Address;
+	extern const wchar_t* rsExpected_Workers;
+	extern const wchar_t* rsCache_Dir;
+	extern const wchar_t* rsWorker_Connect_Timeout;
 }

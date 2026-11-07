@@ -5,3 +5,5 @@ EXPORTS
   
 	do_solve_generic
 	do_get_solver_descriptors
+	do_get_filter_descriptors
+	do_create_filter
