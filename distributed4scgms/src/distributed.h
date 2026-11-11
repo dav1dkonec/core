@@ -317,7 +317,7 @@ namespace scgms_distributed_solver
 
             // 5) Run the distributed evolution
             //####################################################
-            distSolver.evolve(prob, algos, popSize); // Maybe set cycleCount?
+            distSolver.evolve(prob, algos, popSize, generationCount); // Maybe set cycleCount?
             // Blocking call
             const auto& bestIndividual = distSolver.wait_until_completion();
 
