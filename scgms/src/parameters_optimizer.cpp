@@ -726,7 +726,7 @@ class  CParameters_Optimizer {
 
 		HRESULT Optimize(const GUID solver_id, const size_t population_size, const size_t max_generations, 
 				const double** hints, const size_t hint_count,
-				solver::TSolver_Progress &progress, refcnt::Swstr_list error_description) {
+				solver::TSolver_Progress &progress, refcnt::Swstr_list error_description, const wchar_t *solver_options) {
 
 			HRESULT rc = Prepare_Parameters(error_description);
 			if (rc != S_OK) {
@@ -782,7 +782,8 @@ class  CParameters_Optimizer {
 
 				this, internal::Parameters_Fitness_Wrapper, nullptr,
 				max_generations, population_size, std::numeric_limits<double>::min(),
-				problem_described ? &optimizing_problem : nullptr
+				problem_described ? &optimizing_problem : nullptr,
+				solver_options
 			};
 
 			//as the configuration may hold some native filters, let us keep an over-subscription reduced instance to keep the libraries loaded
@@ -952,11 +953,11 @@ DLL_EXPORT HRESULT IfaceCalling optimize_parameters(scgms::IFilter_Chain_Configu
 									     const GUID *solver_id, const size_t population_size, const size_t max_generations, 
 										 const double** hints, const size_t hint_count,
 										 solver::TSolver_Progress *progress,
-										 refcnt::wstr_list *error_description) {
+										 refcnt::wstr_list *error_description, const wchar_t *solver_options) {
 
 	CParameters_Optimizer optimizer{ configuration, &filter_index, &parameters_configuration_name, 1, on_filter_created, on_filter_created_data };
 	refcnt::Swstr_list shared_error_description = refcnt::make_shared_reference_ext<refcnt::Swstr_list, refcnt::wstr_list>(error_description, true);
-	return optimizer.Optimize(*solver_id, population_size, max_generations, hints, hint_count, *progress, shared_error_description);
+	return optimizer.Optimize(*solver_id, population_size, max_generations, hints, hint_count, *progress, shared_error_description, solver_options);
 }
 
 DLL_EXPORT HRESULT IfaceCalling optimize_multiple_parameters(scgms::IFilter_Chain_Configuration *configuration, const size_t *filter_indices, const wchar_t **parameters_configuration_names, size_t filter_count,
@@ -964,10 +965,10 @@ DLL_EXPORT HRESULT IfaceCalling optimize_multiple_parameters(scgms::IFilter_Chai
 												  const GUID *solver_id, const size_t population_size, const size_t max_generations, 
 												  const double** hints, const size_t hint_count,
 												  solver::TSolver_Progress *progress,
-												  refcnt::wstr_list *error_description) {
+												  refcnt::wstr_list *error_description, const wchar_t *solver_options) {
 
 
 	CParameters_Optimizer optimizer{ configuration, filter_indices, parameters_configuration_names, filter_count, on_filter_created, on_filter_created_data };
 	refcnt::Swstr_list shared_error_description = refcnt::make_shared_reference_ext<refcnt::Swstr_list, refcnt::wstr_list>(error_description, true);
-	return optimizer.Optimize(*solver_id, population_size, max_generations, hints, hint_count, *progress, shared_error_description);
+	return optimizer.Optimize(*solver_id, population_size, max_generations, hints, hint_count, *progress, shared_error_description, solver_options);
 }
