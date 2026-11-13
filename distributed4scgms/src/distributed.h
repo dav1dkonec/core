@@ -247,14 +247,9 @@ namespace scgms_distributed_solver
 
             // 3) Construct our Algorithms (MO or SO
             //####################################################
-            std::vector<pagmo::algorithm> algos{};
-            if (numOfObjectives == 1)
-            {
-                algos = construct_so_algorithms(generationCount);
-            } else
-            {
-                algos = construct_mo_algorithms(generationCount);
-            }
+            const algorithm_factory makeAlgorithms = numOfObjectives == 1
+                                                         ? algorithm_factory{construct_so_algorithms}
+                                                         : algorithm_factory{construct_mo_algorithms};
 
             // 4) Set up distributed solver + hints
             //####################################################
@@ -317,7 +312,7 @@ namespace scgms_distributed_solver
 
             // 5) Run the distributed evolution
             //####################################################
-            distSolver.evolve(prob, algos, popSize, generationCount); // Maybe set cycleCount?
+            distSolver.evolve(prob, makeAlgorithms, popSize, generationCount); // Maybe set cycleCount?
             // Blocking call
             const auto& bestIndividual = distSolver.wait_until_completion();
 
