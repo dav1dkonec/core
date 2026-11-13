@@ -42,9 +42,10 @@
 #include <optional>
 #include <string>
 
-// Deployment settings handed from the configuration to the solver. The settings filter fills them
-// in while the chain is configured, CDistributed_Solver::Solve() reads them later and on another
-// thread, hence the guarded accessors.
+#include "distributed_solver.h"
+
+// Deployment settings the console hands the solver through TSolver_Setup::solver_options, written
+// as "key=value;key=value". Each one left out falls back to its environment variable, then a default.
 namespace deployment_settings
 {
     struct TSettings
@@ -53,12 +54,17 @@ namespace deployment_settings
         std::optional<size_t> expected_workers{};
         std::optional<std::string> cache_dir{};
         std::optional<double> worker_connect_timeout_s{};
+        std::optional<heterogeneity_policy> policy{};
     };
 
-    void Set(const TSettings& settings);
-
     /**
-     * @return nothing when no settings filter was configured in this process
+     * Reads the options string. An unknown key or a value that cannot be read is an error rather
+     * than a fallback, so that a typo does not run silently with the default.
+     * @param options nullptr when the console passed none
+     * @param error what is wrong, set only on failure
+     * @return nothing on failure
      */
-    std::optional<TSettings> Get();
+    std::optional<TSettings> Parse(const wchar_t* options, std::string& error);
+
+    const char* Policy_Name(heterogeneity_policy policy);
 }

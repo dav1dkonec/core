@@ -131,13 +131,13 @@ namespace scgms_distributed_solver
         const char* source = "default";
     };
 
-    // Resolution order is the configuration, then the environment variable, then the fallback.
+    // Resolution order is the solver option, then the environment variable, then the fallback.
     inline TResolved<std::string> Resolve(const std::optional<std::string>& configured,
                                           const char* envName, std::string fallback)
     {
         if (configured)
         {
-            return {*configured, "ini"};
+            return {*configured, "option"};
         }
 
         std::string fromEnv = Read_Env(envName);
@@ -154,7 +154,7 @@ namespace scgms_distributed_solver
     {
         if (configured)
         {
-            return {*configured, "ini"};
+            return {*configured, "option"};
         }
 
         if (Read_Env(envName).empty())
@@ -197,9 +197,16 @@ namespace scgms_distributed_solver
                                             : Read_Env(Env_Udp_Library, std::string{"tproblem_udp"});
             const void* originalData = mSetup.data;
 
-            // Empty unless a settings filter was configured in this process; see deployment_settings.
-            const auto configured = deployment_settings::Get();
-            const auto configuredValues = configured.value_or(deployment_settings::TSettings{});
+            std::string optionsError;
+            const auto parsed = deployment_settings::Parse(mSetup.solver_options, optionsError);
+            if (!parsed)
+            {
+                // The library logger has no sinks yet, so the console is the only place it shows
+                std::cerr << "Invalid solver options: " << optionsError << std::endl;
+                return false;
+            }
+            const auto& configuredValues = *parsed;
+            const auto policy = configuredValues.policy.value_or(heterogeneity_policy::BY_POPULATION);
 
             const auto address = Resolve(configuredValues.controller_address, Env_Controller_Address,
                                          std::string{"tcp://0.0.0.0:5555"});
@@ -253,27 +260,22 @@ namespace scgms_distributed_solver
 
             // 4) Set up distributed solver + hints
             //####################################################
-            distributed_solver distSolver{controllerAddress, expectedWorkerCount};
+            distributed_solver distSolver{
+                controllerAddress, expectedWorkerCount, load_balancing_strategy::BY_PERFORMANCE, policy
+            };
 
             // Enable logging
             distSolver.enable_logging();
 
             // Reported only now; before enable_logging() the library logger has no sinks.
             dist_logger()->info("Deployment: address {} ({}), expected workers {} ({}), cache dir {}"
-                                " ({}), connect timeout {} s ({})",
+                                " ({}), connect timeout {} s ({}), policy {} ({})",
                                 controllerAddress, address.source, expectedWorkerCount, workers.source,
                                 cache.value.empty() ? std::string{"built-in"} : cache.value, cache.source,
                                 connectTimeout.count() / 1000.0,
-                                configuredValues.worker_connect_timeout_s ? "ini" : "default");
-
-            if (!configured)
-            {
-                const std::string msg = "No '" + Narrow_WString(GUID_To_WString(settings_filter_id))
-                    + "' filter in the chain, the deployment settings come from the environment and"
-                      " built-in defaults";
-                dist_logger()->warn("{}", msg);
-                std::cerr << msg << std::endl;
-            }
+                                configuredValues.worker_connect_timeout_s ? "option" : "default",
+                                deployment_settings::Policy_Name(policy),
+                                configuredValues.policy ? "option" : "default");
 
             // Must stay after enable_logging(), the verdict goes to the library logger.
             if (solveChain && !Read_Env(Env_Verify).empty())

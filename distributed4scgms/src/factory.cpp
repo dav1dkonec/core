@@ -40,9 +40,6 @@
 
 #include "distributed.h"
 #include "descriptor.h"
-#include "settings_filter.h"
-
-#include <scgms/rtl/manufactory.h>
 
 #include <functional>
 #include <array>
@@ -119,21 +116,6 @@ DLL_EXPORT HRESULT IfaceCalling do_solve_generic(
                 return E_FAIL;
             }
         }
-    }
-
-    return E_NOTIMPL;
-}
-
-
-//#############################################################################################
-//# SCGMS entry point - creates the settings filter, the only filter this library declares
-//#############################################################################################
-DLL_EXPORT HRESULT IfaceCalling do_create_filter(const GUID* id, scgms::IFilter* output,
-                                                 scgms::IFilter** filter)
-{
-    if (*id == scgms_distributed_solver::settings_filter_id)
-    {
-        return Manufacture_Object<scgms_distributed_solver::CSettings_Filter>(filter, output);
     }
 
     return E_NOTIMPL;
