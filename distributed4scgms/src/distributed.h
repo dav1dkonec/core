@@ -289,6 +289,9 @@ namespace scgms_distributed_solver
                 Verify_Chain_Problem(mSetup, mRemap, prob, 5);
             }
 
+            // The same allowance covers a worker that drops off mid-unit and comes back
+            distSolver.set_worker_rejoin_timeout(connectTimeout);
+
             // Without this wait the islands are handed to whoever happens to be connected,
             // which forces the even split and leaves the capability-based plan unused.
             if (!distSolver.wait_until_workers_connect(connectTimeout))
