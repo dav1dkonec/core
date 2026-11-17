@@ -138,6 +138,16 @@ std::optional<deployment_settings::TSettings> deployment_settings::Parse(const w
             }
             settings.worker_connect_timeout_s = seconds;
         }
+        else if (key == "cycle_count")
+        {
+            size_t cycles = 0;
+            if (!parse_count(value, cycles) || cycles == 0)
+            {
+                error = "cycle_count must be a whole number of at least one: " + value;
+                return std::nullopt;
+            }
+            settings.cycle_count = cycles;
+        }
         else if (key == "heterogeneity_policy")
         {
             settings.policy = parse_policy(value);

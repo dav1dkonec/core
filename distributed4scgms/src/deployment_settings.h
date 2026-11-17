@@ -55,6 +55,8 @@ namespace deployment_settings
         std::optional<std::string> cache_dir{};
         std::optional<double> worker_connect_timeout_s{};
         std::optional<heterogeneity_policy> policy{};
+        // Cycles of the archipelago over the nodes; migrants move only between cycles
+        std::optional<size_t> cycle_count{};
     };
 
     /**

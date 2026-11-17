@@ -207,6 +207,7 @@ namespace scgms_distributed_solver
             }
             const auto& configuredValues = *parsed;
             const auto policy = configuredValues.policy.value_or(heterogeneity_policy::BY_POPULATION);
+            const size_t cycleCount = configuredValues.cycle_count.value_or(1);
 
             const auto address = Resolve(configuredValues.controller_address, Env_Controller_Address,
                                          std::string{"tcp://0.0.0.0:5555"});
@@ -269,13 +270,14 @@ namespace scgms_distributed_solver
 
             // Reported only now; before enable_logging() the library logger has no sinks.
             dist_logger()->info("Deployment: address {} ({}), expected workers {} ({}), cache dir {}"
-                                " ({}), connect timeout {} s ({}), policy {} ({})",
+                                " ({}), connect timeout {} s ({}), policy {} ({}), cycles {} ({})",
                                 controllerAddress, address.source, expectedWorkerCount, workers.source,
                                 cache.value.empty() ? std::string{"built-in"} : cache.value, cache.source,
                                 connectTimeout.count() / 1000.0,
                                 configuredValues.worker_connect_timeout_s ? "option" : "default",
                                 deployment_settings::Policy_Name(policy),
-                                configuredValues.policy ? "option" : "default");
+                                configuredValues.policy ? "option" : "default",
+                                cycleCount, configuredValues.cycle_count ? "option" : "default");
 
             // Must stay after enable_logging(), the verdict goes to the library logger.
             if (solveChain && !Read_Env(Env_Verify).empty())
@@ -314,7 +316,7 @@ namespace scgms_distributed_solver
 
             // 5) Run the distributed evolution
             //####################################################
-            distSolver.evolve(prob, makeAlgorithms, popSize, generationCount); // Maybe set cycleCount?
+            distSolver.evolve(prob, makeAlgorithms, popSize, generationCount, cycleCount);
             // Blocking call
             const auto& bestIndividual = distSolver.wait_until_completion();
 
