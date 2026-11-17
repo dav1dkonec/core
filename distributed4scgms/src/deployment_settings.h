@@ -57,6 +57,8 @@ namespace deployment_settings
         std::optional<heterogeneity_policy> policy{};
         // Cycles of the archipelago over the nodes; migrants move only between cycles
         std::optional<size_t> cycle_count{};
+        // Cycles of each node's own archipelago within one unit, for migration between its cores
+        std::optional<size_t> island_cycle_count{};
     };
 
     /**

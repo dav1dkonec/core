@@ -148,6 +148,16 @@ std::optional<deployment_settings::TSettings> deployment_settings::Parse(const w
             }
             settings.cycle_count = cycles;
         }
+        else if (key == "island_cycle_count")
+        {
+            size_t cycles = 0;
+            if (!parse_count(value, cycles) || cycles == 0)
+            {
+                error = "island_cycle_count must be a whole number of at least one: " + value;
+                return std::nullopt;
+            }
+            settings.island_cycle_count = cycles;
+        }
         else if (key == "heterogeneity_policy")
         {
             settings.policy = parse_policy(value);
